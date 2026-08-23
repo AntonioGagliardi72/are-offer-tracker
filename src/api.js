@@ -54,3 +54,43 @@ export async function saveSettings(settings) {
   if (!r.ok) throw new Error("errore salvataggio impostazioni");
   return await r.json();
 }
+
+// ---- Fatture ----
+export async function fetchInvoices() {
+  const r = await fetch("/api/invoices", { headers: headers() });
+  if (r.status === 401) throw new Error("unauthorized");
+  return (await r.json()).invoices || [];
+}
+export async function saveInvoice(inv) {
+  const r = await fetch("/api/invoices", {
+    method: "POST", headers: headers(), body: JSON.stringify(inv),
+  });
+  if (!r.ok) throw new Error((await r.json()).error || "errore salvataggio fattura");
+  return (await r.json()).invoice;
+}
+export async function deleteInvoice(id) {
+  const r = await fetch(`/api/invoices?id=${encodeURIComponent(id)}`, {
+    method: "DELETE", headers: headers(),
+  });
+  if (!r.ok) throw new Error("errore eliminazione fattura");
+}
+
+// ---- Ordini a fornitori ----
+export async function fetchSupplierOrders() {
+  const r = await fetch("/api/supplier-orders", { headers: headers() });
+  if (r.status === 401) throw new Error("unauthorized");
+  return (await r.json()).orders || [];
+}
+export async function saveSupplierOrder(o) {
+  const r = await fetch("/api/supplier-orders", {
+    method: "POST", headers: headers(), body: JSON.stringify(o),
+  });
+  if (!r.ok) throw new Error((await r.json()).error || "errore salvataggio ordine");
+  return (await r.json()).order;
+}
+export async function deleteSupplierOrder(id) {
+  const r = await fetch(`/api/supplier-orders?id=${encodeURIComponent(id)}`, {
+    method: "DELETE", headers: headers(),
+  });
+  if (!r.ok) throw new Error("errore eliminazione ordine");
+}

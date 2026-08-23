@@ -20,24 +20,27 @@ export default async function handler(req, res) {
       let id = o.id;
 
       if (!id) {
-        // New offer: generate the ID from category + year, atomically.
         id = await nextOfferId(o.category);
         await sql`INSERT INTO offers
           (id, category, end_user, direct_customer, scope, amount, currency,
-           status, sub_due, po_due, po_final, pdf_link)
+           status, sub_due, po_due, po_final, pdf_link,
+           customer_po_number, customer_po_date, customer_po_amount)
           VALUES (${id}, ${o.category}, ${o.endUser || ""}, ${o.directCustomer || ""},
            ${o.scope || ""}, ${Number(o.amount) || 0}, ${o.currency || "USD"},
            ${o.status || "Draft"}, ${clean(o.subDue)}, ${clean(o.poDue)},
-           ${Number(o.poFinal) || 0}, ${o.pdfLink || ""})`;
+           ${Number(o.poFinal) || 0}, ${o.pdfLink || ""},
+           ${o.customerPoNumber || ""}, ${clean(o.customerPoDate)}, ${Number(o.customerPoAmount) || 0})`;
       } else {
-        // Existing offer: update in place.
         await sql`UPDATE offers SET
            category=${o.category}, end_user=${o.endUser || ""},
            direct_customer=${o.directCustomer || ""}, scope=${o.scope || ""},
            amount=${Number(o.amount) || 0}, currency=${o.currency || "USD"},
            status=${o.status || "Draft"}, sub_due=${clean(o.subDue)},
            po_due=${clean(o.poDue)}, po_final=${Number(o.poFinal) || 0},
-           pdf_link=${o.pdfLink || ""}
+           pdf_link=${o.pdfLink || ""},
+           customer_po_number=${o.customerPoNumber || ""},
+           customer_po_date=${clean(o.customerPoDate)},
+           customer_po_amount=${Number(o.customerPoAmount) || 0}
            WHERE id=${id}`;
       }
       const { rows } = await sql`SELECT * FROM offers WHERE id=${id}`;
@@ -59,9 +62,8 @@ export default async function handler(req, res) {
   }
 }
 
-// Map DB snake_case row -> client camelCase object.
 function toClient(r) {
-  const d = (v) => (v ? String(v).slice(0, 10) : ""); // DATE -> YYYY-MM-DD
+  const d = (v) => (v ? String(v).slice(0, 10) : "");
   return {
     id: r.id,
     category: r.category,
@@ -75,5 +77,8 @@ function toClient(r) {
     poDue: d(r.po_due),
     poFinal: Number(r.po_final) || 0,
     pdfLink: r.pdf_link || "",
+    customerPoNumber: r.customer_po_number || "",
+    customerPoDate: d(r.customer_po_date),
+    customerPoAmount: Number(r.customer_po_amount) || 0,
   };
 }
