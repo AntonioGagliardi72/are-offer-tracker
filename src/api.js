@@ -1,5 +1,3 @@
-// Small fetch wrapper. The personal password is kept in localStorage and sent
-// on every request as the x-app-password header.
 const PW_KEY = "are_pw";
 
 export const getPw = () => localStorage.getItem(PW_KEY) || "";
@@ -93,4 +91,13 @@ export async function deleteSupplierOrder(id) {
     method: "DELETE", headers: headers(),
   });
   if (!r.ok) throw new Error("errore eliminazione ordine");
+}
+
+// ---- Azzera contatore ----
+export async function resetCounter(key) {
+  const r = await fetch("/api/reset-counter", {
+    method: "POST", headers: headers(), body: JSON.stringify({ key }),
+  });
+  if (!r.ok) throw new Error((await r.json()).error || "errore azzeramento contatore");
+  return await r.json();
 }
