@@ -214,13 +214,17 @@ function Dashboard({ offers, invoices, supplierOrders, base, toBase, baseMoney, 
   );
 }
 
+const OFFER_BLANK = {
+  category:"consultancy", endUser:"", directCustomer:"", scope:"",
+  amount:"", currency:"USD", status:"Draft", subDue:"", poDue:"", poFinal:"", pdfLink:"",
+  customerPoNumber:"", customerPoDate:"", customerPoAmount:"",
+};
+
 function OfferForm({ offers, editId, showToast, reload, setView, setEditId }){
   const existing = editId ? offers.find(o=>o.id===editId) : null;
-  const [f, setF] = useState(existing || {
-    category:"consultancy", endUser:"", directCustomer:"", scope:"",
-    amount:"", currency:"USD", status:"Draft", subDue:"", poDue:"", poFinal:"", pdfLink:"",
-    customerPoNumber:"", customerPoDate:"", customerPoAmount:"",
-  });
+  // Fonde i valori esistenti su un set completo di campi: ogni campo (date
+  // comprese) parte sempre valorizzato, così la modifica non azzera nulla.
+  const [f, setF] = useState(existing ? { ...OFFER_BLANK, ...existing } : { ...OFFER_BLANK });
   const [busy, setBusy] = useState(false);
   const set = (k,v) => setF(prev=>({ ...prev, [k]:v }));
   const isWon = f.status === "Won";
@@ -483,7 +487,7 @@ function Invoices({ offers, invoices, showToast, reload, base, toBase }){
                     <td><span className="pill" style={{background:st.b,color:st.c}}>{i.status}</span></td>
                     <td>{i.pdfLink ? <a className="doc" href={i.pdfLink} target="_blank" rel="noreferrer">📄</a> : "—"}</td>
                     <td style={{whiteSpace:"nowrap"}}>
-                      <button className="link" onClick={()=>setForm({...i})}>Modifica</button>
+                      <button className="link" onClick={()=>setForm({...blank, ...i})}>Modifica</button>
                       <button className="link del" onClick={()=>del(i.id)}>Elimina</button>
                     </td>
                   </tr>
@@ -596,7 +600,7 @@ function SupplierOrders({ supplierOrders, showToast, reload }){
                     <td><span className="pill" style={{background:st.b,color:st.c}}>{o.status}</span></td>
                     <td>{o.pdfLink ? <a className="doc" href={o.pdfLink} target="_blank" rel="noreferrer">📄</a> : "—"}</td>
                     <td style={{whiteSpace:"nowrap"}}>
-                      <button className="link" onClick={()=>setForm({...o})}>Modifica</button>
+                      <button className="link" onClick={()=>setForm({...blank, ...o})}>Modifica</button>
                       <button className="link del" onClick={()=>del(o.id)}>Elimina</button>
                     </td>
                   </tr>
@@ -649,6 +653,62 @@ function Settings({ settings, base, showToast, setView, setSettings }){
       <div className="row-actions">
         <button className="btn btn-primary" onClick={save} disabled={busy}>{busy?"Salvataggio…":"Salva impostazioni"}</button>
       </div>
+
+      <div style={{marginTop:28,paddingTop:20,borderTop:"1px solid var(--line)"}}>
+        <CounterReset showToast={showToast} />
+      </div>
     </div>
+  );
+}
+
+function CounterReset({ showToast }){
+  const year = new Date().getFullYear();
+  const COUNTERS = [
+    ["CON", `Offerte Consultancy (ARE-CON-${year})`],
+    ["SVC", `Offerte Service (ARE-SVC-${year})`],
+    ["SOL", `Offerte Solutions (ARE-SOL-${year})`],
+    ["PRT", `Offerte Parts (ARE-PRT-${year})`],
+    ["INV", `Fatture (ARE-INV-${year})`],
+    ["PO",  `Ordini fornitori (ARE-PO-${year})`],
+  ];
+  const [key, setKey] = useState("CON");
+  const [busy, setBusy] = useState(false);
+
+  const run = async () => {
+    const label = COUNTERS.find(c=>c[0]===key)?.[1] || key;
+    if (!confirm(
+      `Azzerare il contatore "${label}"?\n\n` +
+      `Il prossimo numero generato ripartirà da 0001.\n` +
+      `Attenzione: se esistono ancora elementi con quella numerazione, ` +
+      `potresti ottenere numeri doppi. Procedere?`
+    )) return;
+    setBusy(true);
+    try {
+      await api.resetCounter(key);
+      showToast("Contatore azzerato: riparte da 0001");
+    } catch(e){ showToast("Errore: "+e.message); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <h2>Azzera contatori</h2>
+      <div className="banner" style={{background:"#FAEEDA",color:"#BA7517",borderColor:"#EAD9B5"}}>
+        <span>⚠️</span>
+        <span>Da usare solo dopo aver cancellato dei dati per ricominciare puliti.
+        Azzerando, la prossima creazione di quel tipo riparte da <b>0001</b>.
+        Non tocca gli elementi esistenti.</span>
+      </div>
+      <div className="field" style={{maxWidth:340}}>
+        <label>Quale contatore azzerare</label>
+        <select value={key} onChange={e=>setKey(e.target.value)}>
+          {COUNTERS.map(([k,l])=><option key={k} value={k}>{l}</option>)}
+        </select>
+      </div>
+      <div className="row-actions">
+        <button className="btn btn-ghost" style={{borderColor:"#E0B4B4",color:"#A32D2D"}}
+          onClick={run} disabled={busy}>{busy?"Azzeramento…":"Azzera contatore selezionato"}</button>
+      </div>
+    </>
   );
 }
