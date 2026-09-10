@@ -52,7 +52,16 @@ export default async function handler(req, res) {
 }
 
 function toClient(r) {
-  const d = (v) => (v ? String(v).slice(0, 10) : "");
+  const d = (v) => {
+    if (!v) return "";
+    if (v instanceof Date) {
+      const y = v.getUTCFullYear();
+      const m = String(v.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(v.getUTCDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+    return String(v).slice(0, 10);
+  };
   return {
     id: r.id,
     supplier: r.supplier || "",
