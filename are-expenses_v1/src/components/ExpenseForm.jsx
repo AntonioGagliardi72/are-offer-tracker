@@ -92,7 +92,6 @@ export default function ExpenseForm({ missionId, onSaved }) {
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         style={{ display: 'none' }}
         onChange={handleFile}
       />
