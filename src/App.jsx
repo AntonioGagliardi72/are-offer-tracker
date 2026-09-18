@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Bar, Doughnut } from "react-chartjs-2";
+import { Bar, Pie } from "react-chartjs-2";
 import {
   Chart, BarElement, ArcElement, CategoryScale, LinearScale, Tooltip, Legend,
 } from "chart.js";
@@ -22,11 +22,20 @@ const INV_STATUSES = ["Da pagare","Pagata","Scaduta"];
 const INV_STYLE = {
   "Da pagare":{c:"#BA7517",b:"#FAEEDA"}, "Pagata":{c:"#1D9E75",b:"#E1F5EE"}, "Scaduta":{c:"#A32D2D",b:"#FCEBEB"},
 };
-const SO_STATUSES = ["Emesso","Confermato","Consegnato","Annullato"];
+const SO_STATUSES = ["Emesso","Confermato","Consegnato","Pagato","Annullato"];
 const SO_STYLE = {
   "Emesso":{c:"#185FA5",b:"#E6F1FB"}, "Confermato":{c:"#7F4AB7",b:"#EEEDFE"},
-  "Consegnato":{c:"#1D9E75",b:"#E1F5EE"}, "Annullato":{c:"#A32D2D",b:"#FCEBEB"},
+  "Consegnato":{c:"#1D9E75",b:"#E1F5EE"}, "Pagato":{c:"#0B7A5A",b:"#D3F0E5"},
+  "Annullato":{c:"#A32D2D",b:"#FCEBEB"},
 };
+
+// Una fattura è "scaduta di fatto" se non è pagata e la scadenza è passata,
+// anche se il suo stato salvato è ancora "Da pagare".
+function isOverdue(inv){
+  if (inv.status === "Pagata") return false;
+  if (!inv.dueDate) return false;
+  return new Date(inv.dueDate) < new Date(new Date().toDateString());
+}
 const CCYS = ["USD","AED","EUR"];
 const SYM = { USD:"$", AED:"AED ", EUR:"€" };
 
@@ -132,6 +141,14 @@ function Login({ onOk }){
 function Metric({lbl,val,sub}){
   return <div className="metric"><div className="lbl">{lbl}</div><div className="val">{val}</div><div className="sub">{sub}</div></div>;
 }
+function SummaryRow({label,val,color,bold}){
+  return (
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",padding:"6px 0"}}>
+      <span style={{fontSize:bold?15:13,fontWeight:bold?700:500,color:bold?"var(--text)":"var(--muted)"}}>{label}</span>
+      <span style={{fontSize:bold?18:14,fontWeight:bold?700:600,color}}>{val}</span>
+    </div>
+  );
+}
 function Field({label,full,children}){
   return <div className={"field"+(full?" full":"")}><label>{label}</label>{children}</div>;
 }
@@ -151,10 +168,30 @@ function Dashboard({ offers, invoices, supplierOrders, base, toBase, baseMoney, 
   const decided = offers.filter(o=>o.status==="Won"||o.status==="Lost").length;
   const winRate = decided ? Math.round(won.length/decided*100) : 0;
 
+  // --- Fatture (vista cassa) ---
   const invoicedTot = invoices.reduce((s,i)=>s+toBase(i.amount,i.currency),0);
   const paidTot = invoices.filter(i=>i.status==="Pagata").reduce((s,i)=>s+toBase(i.amount,i.currency),0);
-  const unpaidTot = invoices.filter(i=>i.status!=="Pagata").reduce((s,i)=>s+toBase(i.amount,i.currency),0);
-  const supplierTot = supplierOrders.filter(o=>o.status!=="Annullato").reduce((s,o)=>s+toBase(o.amount,o.currency),0);
+  const overdueInv = invoices.filter(isOverdue);
+  const overdueTot = overdueInv.reduce((s,i)=>s+toBase(i.amount,i.currency),0);
+  // "Da incassare" = non pagate e non ancora scadute (lo scaduto è a parte)
+  const unpaidTot = invoices.filter(i=>i.status!=="Pagata" && !isOverdue(i)).reduce((s,i)=>s+toBase(i.amount,i.currency),0);
+
+  // --- Fornitori (vista cassa): uscita = ordini effettivamente pagati ---
+  const supplierPaid = supplierOrders.filter(o=>o.status==="Pagato").reduce((s,o)=>s+toBase(o.amount,o.currency),0);
+
+  // --- Profitto e margine (cassa reale): incassato − uscite pagate ---
+  const profit = paidTot - supplierPaid;
+  const margin = paidTot > 0 ? Math.round(profit/paidTot*100) : 0;
+
+  // Conteggi fatture per stato "effettivo" (con scaduto calcolato)
+  const invEffCount = {
+    "Da pagare": invoices.filter(i=>i.status!=="Pagata" && !isOverdue(i)).length,
+    "Pagata": invoices.filter(i=>i.status==="Pagata").length,
+    "Scaduta": overdueInv.length,
+  };
+  const invEffAmount = {
+    "Da pagare": unpaidTot, "Pagata": paidTot, "Scaduta": overdueTot,
+  };
 
   const ck = Object.keys(CATS);
   const barData = {
@@ -164,10 +201,20 @@ function Dashboard({ offers, invoices, supplierOrders, base, toBase, baseMoney, 
   };
   const barOpts = { responsive:true, maintainAspectRatio:false,
     plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:v=>SYM[base]+(v/1000)+"k"}}} };
-  const dData = { labels:INV_STATUSES,
-    datasets:[{ data:INV_STATUSES.map(s=>invoices.filter(i=>i.status===s).reduce((a,i)=>a+toBase(i.amount,i.currency),0)),
-      backgroundColor:INV_STATUSES.map(s=>INV_STYLE[s].c) }] };
-  const dOpts = { responsive:true, maintainAspectRatio:false,
+
+  // Grafico fatture: barre verticali per stato effettivo
+  const invBarData = { labels:INV_STATUSES,
+    datasets:[{ data:INV_STATUSES.map(s=>invEffAmount[s]||0),
+      backgroundColor:INV_STATUSES.map(s=>INV_STYLE[s].c), borderRadius:6 }] };
+  const invBarOpts = { responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:v=>SYM[base]+(v/1000)+"k"}}} };
+
+  // Grafico a torta: entrate incassate / uscite fornitori / profitto (se positivo)
+  const pieLabels = ["Incassato","Uscite fornitori", profit>=0?"Profitto":"Perdita"];
+  const pieData = { labels: pieLabels,
+    datasets:[{ data:[paidTot, supplierPaid, Math.abs(profit)],
+      backgroundColor:["#1D9E75","#BA7517", profit>=0?"#0B2545":"#A32D2D"] }] };
+  const pieOpts = { responsive:true, maintainAspectRatio:false,
     plugins:{legend:{position:"bottom",labels:{padding:14,font:{size:12}}}} };
 
   const now = new Date(), soon = [];
@@ -187,18 +234,34 @@ function Dashboard({ offers, invoices, supplierOrders, base, toBase, baseMoney, 
           : "con cambi manuali."} Modificabili in Impostazioni.
       </span></div>
       <div className="cards">
-        <Metric lbl="Offerte" val={total} sub={`${won.length} vinte · ${winRate}% win`} />
-        <Metric lbl="Pipeline aperta" val={baseMoney(pipeline)} sub="offerte inviate" />
-        <Metric lbl="Valore vinto" val={baseMoney(wonVal)} sub={`${won.length} ordini`} />
+        <Metric lbl="Pipeline aperta" val={baseMoney(pipeline)} sub={`${offers.filter(o=>o.status==="Submitted").length} offerte inviate`} />
+        <Metric lbl="Valore vinto" val={baseMoney(wonVal)} sub={`${won.length} vinte · ${winRate}% win`} />
         <Metric lbl="Fatturato" val={baseMoney(invoicedTot)} sub={`${invoices.length} fatture`} />
-        <Metric lbl="Da incassare" val={baseMoney(unpaidTot)} sub={`incassato ${baseMoney(paidTot)}`} />
-        <Metric lbl="Ordini fornitori" val={baseMoney(supplierTot)} sub={`${supplierOrders.length} ordini`} />
+        <Metric lbl="Incassato" val={baseMoney(paidTot)} sub={`${invEffCount["Pagata"]} pagate`} />
+        <Metric lbl="Da incassare" val={baseMoney(unpaidTot)} sub={`${invEffCount["Da pagare"]} da pagare`} />
+        <Metric lbl="Scaduto" val={baseMoney(overdueTot)} sub={`${overdueInv.length} fatture scadute`} />
+        <Metric lbl="Uscite fornitori" val={baseMoney(supplierPaid)} sub={`${supplierOrders.filter(o=>o.status==="Pagato").length} ordini pagati`} />
+        <Metric lbl="Profitto (cassa)" val={baseMoney(profit)} sub={`margine ${margin}%`} />
       </div>
       <div className="chartgrid">
         <div className="panel"><h2>Valore offerte per categoria ({base})</h2>
           <div style={{position:"relative",height:280}}><Bar data={barData} options={barOpts} /></div></div>
         <div className="panel"><h2>Fatture per stato ({base})</h2>
-          <div style={{position:"relative",height:280}}><Doughnut data={dData} options={dOpts} /></div></div>
+          <div style={{position:"relative",height:280}}><Bar data={invBarData} options={invBarOpts} /></div></div>
+      </div>
+      <div className="chartgrid">
+        <div className="panel"><h2>Entrate · Uscite · Profitto ({base})</h2>
+          <div style={{position:"relative",height:280}}><Pie data={pieData} options={pieOpts} /></div></div>
+        <div className="panel"><h2>Sintesi cassa</h2>
+          <div style={{padding:"4px 0"}}>
+            <SummaryRow label="Incassato dai clienti" val={baseMoney(paidTot)} color="#1D9E75" />
+            <SummaryRow label="Pagato ai fornitori" val={"− "+baseMoney(supplierPaid)} color="#BA7517" />
+            <div style={{borderTop:"1px solid var(--line)",margin:"10px 0"}}></div>
+            <SummaryRow label={profit>=0?"Profitto":"Perdita"} val={baseMoney(profit)} color={profit>=0?"#0B2545":"#A32D2D"} bold />
+            <SummaryRow label="Margine sull'incassato" val={margin+"%"} color="var(--muted)" />
+            {overdueTot>0 && <p style={{fontSize:12,color:"#A32D2D",marginTop:12}}>⚠️ {baseMoney(overdueTot)} in fatture scadute da recuperare.</p>}
+          </div>
+        </div>
       </div>
       <div className="panel"><h2>Scadenze prossime (30 giorni)</h2>
         {soon.length ? (
@@ -475,7 +538,8 @@ function Invoices({ offers, invoices, showToast, reload, base, toBase }){
                 <th>Fattura ID</th><th>Offerta</th><th>Descrizione</th><th>Importo</th>
                 <th>Emissione</th><th>Scadenza</th><th>Stato</th><th>PDF</th><th></th>
               </tr></thead><tbody>{invoices.map(i=>{
-                const st=INV_STYLE[i.status]||INV_STYLE["Da pagare"];
+                const effStatus = isOverdue(i) ? "Scaduta" : i.status;
+                const st=INV_STYLE[effStatus]||INV_STYLE["Da pagare"];
                 return (
                   <tr key={i.id}>
                     <td className="oid">{i.id}</td>
@@ -484,7 +548,7 @@ function Invoices({ offers, invoices, showToast, reload, base, toBase }){
                     <td>{money(i.amount,i.currency)}</td>
                     <td>{i.issueDate||"—"}</td>
                     <td className={i.status!=="Pagata"?dueClass(i.dueDate):""}>{i.dueDate||"—"}</td>
-                    <td><span className="pill" style={{background:st.b,color:st.c}}>{i.status}</span></td>
+                    <td><span className="pill" style={{background:st.b,color:st.c}}>{effStatus}</span></td>
                     <td>{i.pdfLink ? <a className="doc" href={i.pdfLink} target="_blank" rel="noreferrer">📄</a> : "—"}</td>
                     <td style={{whiteSpace:"nowrap"}}>
                       <button className="link" onClick={()=>setForm({...blank, ...i})}>Modifica</button>
