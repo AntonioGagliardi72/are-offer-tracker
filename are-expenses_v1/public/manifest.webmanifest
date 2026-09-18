@@ -1,0 +1,13 @@
+{
+  "name": "ARE Expenses",
+  "short_name": "ARE Expenses",
+  "description": "ARE FZE travel expense report",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f1420",
+  "theme_color": "#0f1420",
+  "icons": [
+    { "src": "/logo.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/logo.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
