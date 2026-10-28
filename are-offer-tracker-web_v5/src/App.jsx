@@ -451,10 +451,22 @@ function OfferList({ offers, invoices, showToast, reload, setEditId, setView }){
 }
 
 function Invoices({ offers, invoices, showToast, reload, base, toBase }){
-  const blank = { offerId:"", description:"", amount:"", currency:"USD", issueDate:"", dueDate:"", status:"Da pagare", pdfLink:"" };
+  const blank = { offerId:"", customer:"", description:"", amount:"", currency:"USD", issueDate:"", dueDate:"", status:"Da pagare", pdfLink:"" };
   const [form, setForm] = useState(null); // null = chiuso, altrimenti oggetto in modifica/creazione
   const [busy, setBusy] = useState(false);
   const set = (k,v) => setForm(prev=>({ ...prev, [k]:v }));
+  // Collega un'offerta e, se il campo cliente è vuoto, lo riempie col cliente
+  // dell'offerta (direct_customer, altrimenti end user). Resta modificabile.
+  const onOfferChange = (offerId) => {
+    const off = offers.find(o=>o.id===offerId);
+    setForm(prev => {
+      const next = { ...prev, offerId };
+      if (off && !(prev.customer||"").trim()) {
+        next.customer = off.directCustomer || off.endUser || "";
+      }
+      return next;
+    });
+  };
 
   const save = async () => {
     setBusy(true);
@@ -469,8 +481,8 @@ function Invoices({ offers, invoices, showToast, reload, base, toBase }){
     try { await api.deleteInvoice(id); showToast("Eliminata"); await reload(); } catch { showToast("Errore"); }
   };
   const exportCSV = () => {
-    const h=["Invoice ID","Offer ID","Descrizione","Importo","Valuta","Data emissione","Scadenza","Stato","PDF"];
-    const data=invoices.map(i=>[i.id,i.offerId,i.description,i.amount,i.currency,i.issueDate,i.dueDate,i.status,i.pdfLink]);
+    const h=["Invoice ID","Cliente","Offer ID","Descrizione","Importo","Valuta","Data emissione","Scadenza","Stato","PDF"];
+    const data=invoices.map(i=>[i.id,i.customer,i.offerId,i.description,i.amount,i.currency,i.issueDate,i.dueDate,i.status,i.pdfLink]);
     const csv=[h,...data].map(r=>r.map(v=>`"${String(v??"").replace(/"/g,'""')}"`).join(",")).join("\n");
     const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
     a.download="ARE_invoices.csv"; a.click(); showToast("CSV esportato");
@@ -484,12 +496,15 @@ function Invoices({ offers, invoices, showToast, reload, base, toBase }){
           <div className="banner"><span>ℹ️</span><span>L'ID fattura (ARE-INV-…) è assegnato automaticamente. Collega la fattura a un'offerta vinta.</span></div>
           <div className="formgrid">
             <Field label="Offerta collegata">
-              <select value={form.offerId} onChange={e=>set("offerId",e.target.value)}>
+              <select value={form.offerId} onChange={e=>onOfferChange(e.target.value)}>
                 <option value="">— nessuna —</option>
                 {offers.filter(o=>o.status==="Won"||o.id===form.offerId).map(o=>(
                   <option key={o.id} value={o.id}>{o.id} — {o.directCustomer||o.endUser||""}</option>
                 ))}
               </select>
+            </Field>
+            <Field label="Cliente (chi deve pagare)">
+              <input value={form.customer} onChange={e=>set("customer",e.target.value)} placeholder="si compila dall'offerta, modificabile" />
             </Field>
             <Field label="Fattura ID">
               <input readOnly value={form.id || "assegnato al salvataggio"} />
@@ -535,7 +550,7 @@ function Invoices({ offers, invoices, showToast, reload, base, toBase }){
           <div className="panel" style={{padding:0,overflowX:"auto"}}>
             {invoices.length ? (
               <table><thead><tr>
-                <th>Fattura ID</th><th>Offerta</th><th>Descrizione</th><th>Importo</th>
+                <th>Fattura ID</th><th>Cliente</th><th>Offerta</th><th>Descrizione</th><th>Importo</th>
                 <th>Emissione</th><th>Scadenza</th><th>Stato</th><th>PDF</th><th></th>
               </tr></thead><tbody>{invoices.map(i=>{
                 const effStatus = isOverdue(i) ? "Scaduta" : i.status;
@@ -543,6 +558,7 @@ function Invoices({ offers, invoices, showToast, reload, base, toBase }){
                 return (
                   <tr key={i.id}>
                     <td className="oid">{i.id}</td>
+                    <td style={{fontWeight:500}}>{i.customer||"—"}</td>
                     <td className="oid" style={{fontSize:11}}>{i.offerId||"—"}</td>
                     <td>{i.description||"—"}</td>
                     <td>{money(i.amount,i.currency)}</td>
