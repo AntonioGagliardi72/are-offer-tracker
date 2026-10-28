@@ -1,6 +1,5 @@
 import { sql } from "@vercel/postgres";
 
-// Idempotent schema creation. Cheap enough to run on each cold start.
 let schemaReady = false;
 export async function ensureSchema() {
   if (schemaReady) return;
@@ -21,12 +20,10 @@ export async function ensureSchema() {
     created_at TIMESTAMPTZ DEFAULT now()
   )`;
 
-  // Customer PO received against a won offer (numero cliente, non generato da noi).
   await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS customer_po_number TEXT DEFAULT ''`;
   await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS customer_po_date DATE`;
   await sql`ALTER TABLE offers ADD COLUMN IF NOT EXISTS customer_po_amount NUMERIC DEFAULT 0`;
 
-  // Fatture emesse da noi, collegate a un'offerta (più fatture per offerta).
   await sql`CREATE TABLE IF NOT EXISTS invoices (
     id TEXT PRIMARY KEY,
     offer_id TEXT REFERENCES offers(id) ON DELETE CASCADE,
@@ -39,8 +36,8 @@ export async function ensureSchema() {
     pdf_link TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT now()
   )`;
+  await sql`ALTER TABLE invoices ADD COLUMN IF NOT EXISTS customer TEXT DEFAULT ''`;
 
-  // Ordini emessi da noi verso fornitori (sezione indipendente).
   await sql`CREATE TABLE IF NOT EXISTS supplier_orders (
     id TEXT PRIMARY KEY,
     supplier TEXT DEFAULT '',
@@ -66,7 +63,6 @@ export async function ensureSchema() {
   schemaReady = true;
 }
 
-// Simple shared-password gate, suitable for a single personal user.
 export function checkAuth(req, res) {
   const pw = req.headers["x-app-password"];
   if (!process.env.APP_PASSWORD || pw !== process.env.APP_PASSWORD) {
@@ -80,7 +76,6 @@ export const CAT_CODE = {
   consultancy: "CON", service: "SVC", solutions: "SOL", parts: "PRT",
 };
 
-// Atomic sequencing for any prefixed series (offers, invoices, supplier orders).
 export async function nextSeq(counterKey) {
   const { rows } = await sql`
     INSERT INTO counters (id, seq) VALUES (${counterKey}, 1)
