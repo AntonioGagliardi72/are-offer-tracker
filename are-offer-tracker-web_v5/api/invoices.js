@@ -19,13 +19,13 @@ export default async function handler(req, res) {
       if (!id) {
         id = await nextInvoiceId();
         await sql`INSERT INTO invoices
-          (id, offer_id, description, amount, currency, issue_date, due_date, status, pdf_link)
-          VALUES (${id}, ${clean(o.offerId)}, ${o.description || ""}, ${Number(o.amount) || 0},
+          (id, offer_id, customer, description, amount, currency, issue_date, due_date, status, pdf_link)
+          VALUES (${id}, ${clean(o.offerId)}, ${o.customer || ""}, ${o.description || ""}, ${Number(o.amount) || 0},
            ${o.currency || "USD"}, ${clean(o.issueDate)}, ${clean(o.dueDate)},
            ${o.status || "Da pagare"}, ${o.pdfLink || ""})`;
       } else {
         await sql`UPDATE invoices SET
-           offer_id=${clean(o.offerId)}, description=${o.description || ""},
+           offer_id=${clean(o.offerId)}, customer=${o.customer || ""}, description=${o.description || ""},
            amount=${Number(o.amount) || 0}, currency=${o.currency || "USD"},
            issue_date=${clean(o.issueDate)}, due_date=${clean(o.dueDate)},
            status=${o.status || "Da pagare"}, pdf_link=${o.pdfLink || ""}
@@ -63,6 +63,7 @@ function toClient(r) {
   return {
     id: r.id,
     offerId: r.offer_id || "",
+    customer: r.customer || "",
     description: r.description || "",
     amount: Number(r.amount) || 0,
     currency: r.currency || "USD",
